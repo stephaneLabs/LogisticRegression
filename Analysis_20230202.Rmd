@@ -1,0 +1,421 @@
+---
+title : "Pima Indians Diabetes Database Analysis with Logistic Regression"
+author : "Stéphane Lassalvy 2023"
+---
+
+<!-- #' Logit regression of diabete data -->
+<!-- #' -->
+<!-- #' Copyright Stéphane Lassalvy 2023 -->
+<!-- #'  -->
+<!-- #' This R code in under GPL-3 Licence -->
+<!-- #'  -->
+<!-- #' Disclaimer of Warranty : -->
+<!-- #' THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW.  -->
+<!-- #' EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES -->
+<!-- #' PROVIDE THE PROGRAM “AS IS” WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR IMPLIED, -->
+<!-- #' INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS -->
+<!-- #' FOR A PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU. -->
+<!-- #' SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, -->
+<!-- #' REPAIR OR CORRECTION. -->
+<!-- #'  -->
+<!-- #' Diabete data are available on Kaggle under licence CC0: -->
+<!-- #' License : CC0: Public Domain. Smith, J.W., Everhart, J.E., Dickson, W.C., Knowler, W.C., & Johannes, R.S. (1988). -->
+<!-- #' Using the ADAP learning algorithm to forecast the onset of diabetes mellitus. In Proceedings of the Symposium on -->
+<!-- #' Computer Applications and Medical Care (pp. 261--265). IEEE Computer Society Press -->
+<!-- #' https://www.kaggle.com/datasets/whenamancodes/predict-diabities -->
+<!-- #'  -->
+```{r}
+library(knitr)
+```
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 9, fig.height  = 9)
+
+```{r}
+library(devtools)
+library(rmarkdown)
+library(tidyverse)
+library(FactoMineR)
+library(missMDA)
+library(InformationValue)
+library(ISLR)
+library(caret)
+```
+
+# Context
+This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. The objective of the dataset is to diagnostically predict whether or not a patient has diabetes, based on certain diagnostic measurements included in the dataset. Several constraints were placed on the selection of these instances from a larger database. In particular, all patients here are females at least 21 years old of Pima Indian heritage.
+
+# Content
+The datasets consists of several medical predictor variables and one target variable, Outcome. Predictor variables includes the number of pregnancies the patient has had, their BMI, insulin level, age, and so on.
+
+The datasets consists of several medical predictor variables and one target variable, Outcome. Predictor variables includes the number of pregnancies the patient has had, their BMI, insulin level, age, and so on.
+
+```{r}
+# Read the dataset
+df <- read.csv("~/Documents/Info_Stats/R/Kaggle_Diabete/diabetes.csv")
+df <- as_tibble(df)
+dim(df)
+```
+
+This work is based on a set of R functions especially build to fit and assess a logistic regression model. The response variable is the variable Outcome which is binary. The predictors are quantitative.
+```{r}
+# Source the R addons That I have coded for the logistic regression under R
+# devtools::source_url("https://github.com/stephaneLabs/Logistic_Addons/logisticRegressionAddons_20230209.R")
+source("~/Documents/Info_Stats/R/Kaggle_Diabete/logisticRegressionAddons_20230209.R")
+```
+
+```{r formatting data}
+# Quick format of the data
+df <- df %>% mutate(Pregnancies      = Pregnancies %>% as.numeric(),
+                    Glucose          = Glucose %>% as.numeric(),
+                    SkinThickness    = SkinThickness %>% as.numeric(),
+                    Insulin          = Insulin %>% as.numeric(),
+                    BMI              = BMI %>% as.numeric(),
+                    DiabetesPedigreeFunction = DiabetesPedigreeFunction %>% as.numeric(),
+                    Age              = Age %>% as.numeric(),
+                    Outcome = Outcome %>% as.factor())
+```
+
+# Data exploration : descriptive statistics of the continuous predictors
+## Pregnancies
+```{r}
+quantitativeVariableDescription(df = df, variableName = "Pregnancies")
+```
+
+## Glucose
+```{r}
+# Glucose, seems a little O inflated and 0 is an outlier, 0 glucose in blood seems odd to me, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "Glucose")
+```
+
+## Blood pressure
+```{r}
+# Blood pressure, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "BloodPressure")
+```
+
+## SkinThickness
+```{r}
+# SkinThickness, very 0 inflated, 0 for skin thickness seems odd too, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "SkinThickness")
+```
+
+## Insulin
+```{r}
+# Insulin, a little 0 inflated, 0 for Insulin seems a little odd to me, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "Insulin")
+```
+
+## BMI
+```{r}
+# BMI, 0 is very strange a BMI of 0 would imply a weight of 0 for the individual, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "BMI")
+```
+
+## DiabetesPedigreeFunction
+```{r}
+# DiabetesPedigreeFunction, seems OK
+quantitativeVariableDescription(df = df, variableName = "DiabetesPedigreeFunction")
+```
+
+## Age
+```{r}
+# Age, seems OK
+quantitativeVariableDescription(df = df, variableName = "Age")
+```
+
+# Pairs plot of the predictors
+```{r}
+# Strange paterns wich make think that 0 are NA for some variables
+pairs(df[,1:8])
+```
+
+
+The different univariate analyses show the histogram of each predictor, the corresponding kernel density estimator, skewness, kurtosis and the distribution of a Gaussian distribution having for mean the sample mean and for standard deviation the sample standard deviation.
+
+Some variables appears to be zero inflated. For one having no human biology notions it is difficult to determine if those 0 values are consistent with reality or are artefacts. However some good sense can be helpful : a blood sugar equal to zero sounds strange as well as an insulin rate equal to zero. A BMI equal to zero would mean a wheight of zero for the individual which is erratic. For skinthickness the 0 values seem very detached of the whole distribution, and considering the range of values, having a skin thickness of 0 seems very improbable. 
+
+Moreover the pairs plot shows patterns which seems to indicate that those 0 are really odd.
+
+Then for Glucose, Insulin, SkinThickness ans BMI, the 0 values are replaced by missing values.
+
+
+```{r}
+# Replacing problematic zeros by NAs
+df$Glucose[df$Glucose==0]             <- NA
+df$SkinThickness[df$SkinThickness==0] <- NA
+df$Insulin[df$Insulin == 0]           <- NA
+df$BMI[df$BMI==0]                     <- NA
+```
+
+# Re-plotting the modified variables
+## Glucose
+```{r}
+# Glucose, seems a little O inflated and 0 is an outlier, 0 glucose in blood seems odd to me, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "Glucose")
+```
+
+## SkinThickness
+```{r}
+# SkinThickness, very 0 inflated, 0 for skin thickness seems odd too, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "SkinThickness")
+```
+
+## Insulin
+```{r}
+# Insulin, a little 0 inflated, 0 for Insulin seems a little odd to me, put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "Insulin")
+```
+
+## BMI
+```{r}
+# BMI, 0 is very strange a BMI of 0 would imply a weight of 0 for the individual, , put 0 to NA
+quantitativeVariableDescription(df = df, variableName = "BMI")
+```
+
+After having changed the 0 by NA, the distributions of Glucose, SkinThickness ans BMI are closer to a normal distribution. It is not the case for Insulin but it does not bother me to keep it like this.
+
+# PCA of the predictors
+
+The following shows the PCA of the predictor variables, the missing values are replaced by the mean of the available values for the variable. This step is mostly performed to see if there is colinearity in this set of variables, which is the case.
+
+```{r}
+# PCA of data, NA are replaced by the mean of the variable
+# PCA replace missing values by the mean of the variable, some variable are highly correlated (colinearity problems ?)
+df_PCA <- PCA(X = df, scale.unit = TRUE, ncp = 8, quali.sup = 9, graph = FALSE)
+
+# 6 components explains 89% of the data
+barplot(df_PCA$eig[,2])
+
+kable(df_PCA$eig)
+
+# Discrimination of the 2 diagnostics are not very good in the 1st plane of the PCA
+plot(df_PCA,axes = c(1,2), choix = "var")
+plot(df_PCA,axes = c(1,2), choix = "ind", habillage = 9)
+# 5 axes explain 82% of the inertia
+```
+
+As we can see, five axes explains 82% of the variability of the data. Pregnancies and Age are highly correlated, and a symetrical direction (with respect to the horizontal axis) is given by Skinthickness and BMI which are very correlated too.
+
+# Imputing missing data
+
+To get a better imputation of missing data, we take advantage here of the missMDA R packages, choosing an imputation method based on PCA and choosing 5  (we saw in the previous section 5 axes explain 82% of the data) as the number of components to be used for the data reconstruction.
+
+```{r}
+# summary(df$Outcome)
+# 
+# estim_ncpPCA(df, ncp.max = 9, scale = FALSE, quali.sup = 9)
+# Impute missing values with a better method following a PCA model
+df_Imputation <- imputePCA(df, quali.sup = 9, ncp = 5, maxiter = 5000, scale = FALSE)
+df_Complete <- df_Imputation$completeObs
+```
+
+# Checking the linearity of the relationship between odds and the quantitative predictors
+
+We check here the relationship between the log odds of the diabetes and the predictors. A linear relationship has to be observed to use the predictor as quantitative. If the relationship is not quantitative a transformation or a transformation into factor has to be done.
+
+To get the values for the data of our plot, groups are done with a discretization function and the means of the groups are plotted to see is we get a linear shape. The method used for discretization is the "cluster" option of the function "discretize" of the "arules" package. This method is based on k-means clustering.
+
+## Pregnancies
+```{r}
+# description between the log(odds) and the quantitative predictors (should be linear)
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", method = "cluster", breaks = 10, quantitativePredictor = "Pregnancies")
+```
+
+## Glucose
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", method = "cluster", breaks = 10, quantitativePredictor = "Glucose")
+```
+
+## SkinThickness
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", method = "cluster", breaks = 10, quantitativePredictor = "SkinThickness")
+```
+
+## Insulin
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", method = "cluster", breaks = 10, quantitativePredictor = "Insulin")
+```
+
+## BMI
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", method = "cluster", breaks = 10, quantitativePredictor = "BMI")
+```
+
+## DiabetesPedigreeFunction
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", digits = 1, quantitativePredictor = "DiabetesPedigreeFunction")
+```
+
+## Age
+```{r}
+logOddsVsQuantitativePredictor(df = df_Complete, binaryResponse = "Outcome", digits = 1, quantitativePredictor = "Age")
+```
+
+# Discretization for problematic variables
+
+## Insulin
+```{r}
+# For insulin the relationship is not so good, we choose do discretize this variable
+df_Complete <- df_Complete %>% mutate(Insulin_grouped = as.factor(discretize(Insulin, method = "frequency", breaks = 3)))
+attr(df_Complete$Insulin_grouped, "discretized:breaks") <- NULL
+attr(df_Complete$Insulin_grouped, "discretized:method") <- NULL
+binaryResponseVSCategoricalPredictor(df = df_Complete, binaryResponse = "Outcome", categoricalPredictor = "Insulin_grouped")
+# seems to have a slightly influence on the outcome
+```
+
+## DiabetesPedigreeFunction
+```{r}
+# DiabetesPedigreeFunction discretized too
+df_Complete <- df_Complete %>% mutate(DiabetesPedigreeFunction_grouped = as.factor(discretize(DiabetesPedigreeFunction, method = "frequency", breaks = 3)))
+attr(df_Complete$DiabetesPedigreeFunction_grouped, "discretized:breaks") <- NULL
+attr(df_Complete$DiabetesPedigreeFunction_grouped, "discretized:method") <- NULL
+binaryResponseVSCategoricalPredictor(df = df_Complete, binaryResponse = "Outcome", categoricalPredictor = "DiabetesPedigreeFunction_grouped")
+```
+
+```{r}
+# Age discretized too
+df_Complete <- df_Complete %>% mutate(Age_grouped = as.factor(discretize(Age, method = "frequency", breaks = 3)))
+attr(df_Complete$Age_grouped, "discretized:breaks") <- NULL
+attr(df_Complete$Age_grouped, "discretized:method") <- NULL
+binaryResponseVSCategoricalPredictor(df = df_Complete, binaryResponse = "Outcome", categoricalPredictor = "Age_grouped")
+
+df_Complete <- droplevels(df_Complete)
+```
+
+# Splitting the data into a training and a testing set
+```{r}
+#make this example reproducible
+set.seed(1)
+
+#Use 70% of dataset as training set and remaining 30% as testing set
+sample_train   <- sample(c(TRUE, FALSE), nrow(df_Complete), replace = TRUE, prob = c(0.7,0.3))
+df_train       <- df_Complete[sample_train, ]
+df_test        <- df_Complete[!sample_train, ]
+```
+
+# Fitting the null model
+```{r}
+# Null model
+m0 <- glm(Outcome ~ 1, family=binomial(link = logit),
+          data = df_train)
+AIC(m0)
+```
+
+# Fitting the initial model
+```{r}
+# Initial model
+m1 <- glm(Outcome ~ Pregnancies + Glucose + SkinThickness + Insulin_grouped + BMI + DiabetesPedigreeFunction_grouped + Age_grouped,
+          family = binomial(link = logit), data = df_train)
+```
+
+## Variance inflation factor (VIF)
+```{r}
+VIFTable <- plotVIF(m1)
+kable(VIFTable)
+```
+
+## Deviance table
+```{r}
+anova(m1, test = "Chisq")
+```
+
+## AIC Value
+```{r}
+AIC(m1)
+```
+
+## R2 values
+```{r}
+print(computeR2s(m1, m0))
+```
+
+## Area under the ROC curve
+```{r}
+Cstat(m1)
+```
+
+## Hosmer and Lemeshow goodness of fit test
+```{r}
+HoslemTest(m1)
+```
+
+## Residual plots
+```{r}
+residualPlots(m1, binaryresponse = "Outcome")
+```
+
+ 
+# Backward elimination
+Backward elimination is seen as the less bad method for variable selection so let us try it.
+
+```{r}
+m <- m1
+m <- update(m, . ~ . - DiabetesPedigreeFunction_grouped)
+```
+
+## Variance inflation factor (VIF)
+```{r}
+plotVIF(m)
+```
+
+## Deviance table
+```{r}
+anova(m, test = "Chisq")
+```
+
+## AIC Value
+```{r}
+AIC(m)
+```
+
+## R2 values
+```{r}
+print(computeR2s(m, m0))
+```
+
+## Area under the ROC curve
+```{r}
+Cstat(m)
+```
+
+## Hosmer and Lemeshow goodness of fit test
+```{r}
+HoslemTest(m)
+```
+
+## Residual plots
+```{r}
+residualPlots(m, binaryresponse = "Outcome")
+```
+
+The deviance table suggests to discard DiabetesPedigreeFunction_grouped but AIC disagree and the Cstats function is a little less than in the initial model. This suggest that there is not a great gain in suppressing the DiabetesPedigreeFunction_grouped factor from the model. The backward selection ends here. We keep all the variable of our initial model.
+
+# Interpretting the Odds ratios
+
+## Exponentiation of the estimated coefficients
+```{r}
+kable(exp(coef(m1)))
+
+```
+
+## Exponentiation of the confidence intervals
+```{r}
+kable(exp(confint(m1)))
+
+```
+
+# Roc curves for the training and the testing sets
+```{r}
+m_train <- m1
+
+observations_train  <- df_train$Outcome
+predictedProb_train <- predict(m_train, type = "response")
+
+rocCurve(m_train, testDf = df_test)
+```
+
+
+# References
+Antoniadis, A., Berruyer, J., & Carmona, R. (1992). Régression non linéaire et applications. Economica.
+
+Smith, J.W., Everhart, J.E., Dickson, W.C., Knowler, W.C., & Johannes, R.S. (1988). Using the ADAP learning algorithm to forecast the onset of diabetes mellitus. In Proceedings of the Symposium on Computer Applications and Medical Care (pp. 261--265). IEEE Computer Society Press.
