@@ -1,4 +1,4 @@
-## logisticRegressionAddons_20230202.R : addons to assess a logistic regression fit 
+## logisticRegressionAddons_20230209.R : addons to assess a logistic regression fit 
 
 ## Analysis_20230202.R : example using a dataset from Kaggle
 
