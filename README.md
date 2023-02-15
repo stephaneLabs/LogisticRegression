@@ -1,6 +1,6 @@
 ## logisticRegressionAddons_20230215.R : addons to assess a logistic regression fit
 
-## Logistic_Regression_Analysis_20230215.R : example using a dataset from Kaggle
+## Pima_Diabetes_Logistic_Regression_20230215.R : example using a dataset from Kaggle
 
 * The 2 R scripts are under GPL3 Licence.
 
