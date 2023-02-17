@@ -1,4 +1,4 @@
-The R code in this repository is published under GPL-3
+The .R and .Rmd code in this repository is published under GPL-3
 (c) Stéphane Lassalvy 2023
 
 The data are available on Kaggle under a CC0 licence :
